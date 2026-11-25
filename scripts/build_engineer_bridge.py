@@ -9,6 +9,8 @@ from pathlib import Path, PurePosixPath
 import shutil
 import subprocess
 import tarfile
+import time
+import urllib.error
 import urllib.request
 import zipfile
 
@@ -26,10 +28,39 @@ DOBBY_URL = "https://repo.maven.apache.org/maven2/io/github/vvb2060/ndk/dobby/1.
 DOBBY_HASH = "251f48ae21686d7f69276c50644ca345f450e45110057437f7d76bb14cddf3a1"
 
 
+def fetch_dependency(url: str) -> bytes:
+    """Retry transient failures; use only the two official Maven Central hosts."""
+    alternate = url.replace(
+        "https://repo.maven.apache.org/maven2/", "https://repo1.maven.org/maven2/", 1
+    ) if url.startswith("https://repo.maven.apache.org/maven2/") else url
+    for attempt in range(4):
+        endpoint = url if attempt % 2 == 0 else alternate
+        request = urllib.request.Request(endpoint, headers={"User-Agent": "LocalSoterLab-build/1"})
+        try:
+            with urllib.request.urlopen(request, timeout=60) as response:
+                return response.read()
+        except urllib.error.HTTPError as error:
+            if error.code not in (429, 500, 502, 503, 504) or attempt == 3:
+                raise
+            retry_after = error.headers.get("Retry-After", "") if error.headers else ""
+            delay = int(retry_after) if retry_after.isdecimal() else 5 * 2**attempt
+            # Do not ignore a server's long cooldown or hold a build indefinitely.
+            if delay > 60:
+                raise
+            error.close()
+        except (urllib.error.URLError, TimeoutError):
+            if attempt == 3:
+                raise
+            delay = 5 * 2**attempt
+        print(f"Transient dependency download failure; retry {attempt + 2}/4 in {delay}s", flush=True)
+        time.sleep(delay)
+    raise RuntimeError("dependency download exhausted retries")
+
+
 def download(name: str, url: str, digest: str) -> bytes:
     CACHE.mkdir(parents=True, exist_ok=True)
     path = CACHE / name
-    raw = path.read_bytes() if path.is_file() else urllib.request.urlopen(url, timeout=60).read()
+    raw = path.read_bytes() if path.is_file() else fetch_dependency(url)
     if hashlib.sha256(raw).hexdigest() != digest:
         raise ValueError(f"Dependency digest mismatch: {name}")
     if not path.exists():
