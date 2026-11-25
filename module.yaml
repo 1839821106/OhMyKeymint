@@ -1,8 +1,8 @@
 # yaml-language-server: $schema=https://raw.githubusercontent.com/KernelSU-Modules/tools/main/schemas/module.schema.json
 schemaVersion: 1
 id: oh_my_keymint
-name: Oh My Keymint
-summary: Custom keystore implementation for Android Keystore Spoofer
+name: Local Soter Lab
+summary: Experimental local Soter counter adapter based on ITxiao6666 OMK 1.4.6-271
 description: README.md
 license: custom
 homepage: https://github.com/ITxiao6666/OhMyKeymint

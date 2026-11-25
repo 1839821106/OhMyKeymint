@@ -25,6 +25,10 @@ pub const ROOT: &str = "/data/misc/keystore/omk/data/soter";
 const MAX_FILE: usize = 4 * 1024 * 1024;
 const MAX_APPS: usize = 512;
 
+fn is_false(value: &bool) -> bool {
+    !value
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct Identity {
@@ -46,13 +50,22 @@ pub struct App {
 pub struct Config {
     pub version: u32,
     pub enabled: bool,
+    /// Experimental framework counters, not TEE-verified payment evidence.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub framework_biometrics: bool,
     pub identities: Vec<Identity>,
     pub apps: BTreeMap<String, App>,
 }
 
 impl Default for Config {
     fn default() -> Self {
-        Self { version: 1, enabled: false, identities: Vec::new(), apps: BTreeMap::new() }
+        Self {
+            version: 1,
+            enabled: false,
+            framework_biometrics: false,
+            identities: Vec::new(),
+            apps: BTreeMap::new(),
+        }
     }
 }
 
@@ -61,6 +74,8 @@ impl Default for Config {
 pub enum Change {
     #[serde(rename = "enabled")]
     Enabled { enabled: bool },
+    #[serde(rename = "framework_biometrics")]
+    FrameworkBiometrics { enabled: bool },
     #[serde(rename = "add")]
     Add { name: String },
     #[serde(rename = "remove")]
@@ -271,6 +286,7 @@ fn change_at(root: &Path, change: Change) -> Result<Config, String> {
     let mut removed = None;
     match change {
         Change::Enabled { enabled } => config.enabled = enabled,
+        Change::FrameworkBiometrics { enabled } => config.framework_biometrics = enabled,
         Change::Add { name } => {
             if config.identities.len() >= 32
                 || name.trim().is_empty()
@@ -424,6 +440,17 @@ fn answer_at(
     request: Request,
     packages: &str,
 ) -> Result<Outcome, String> {
+    answer_with_probe_at(root, uid, tx, request, packages, crate::framework_biometrics::snapshot)
+}
+
+fn answer_with_probe_at(
+    root: &Path,
+    uid: u32,
+    tx: u32,
+    request: Request,
+    packages: &str,
+    probe: impl FnOnce(u32) -> Option<Platform>,
+) -> Result<Outcome, String> {
     let _guard = private_directory(root)?;
     let config = config_at(root)?;
     let app = config.selected(uid, packages)?.ok_or("SOTER caller is not selected")?;
@@ -479,7 +506,17 @@ fn answer_at(
     if !app.cpu_id.is_empty() {
         state.cpu_id.clone_from(&app.cpu_id);
     }
-    let response = dispatch::handle_request(&mut state, tx, request, Platform::default())
+    let platform = if config.framework_biometrics
+        && matches!(tx, dispatch::TX_INIT_SIGN | dispatch::TX_FINISH_SIGN)
+    {
+        probe(uid).unwrap_or_else(|| {
+            log::warn!("event=soter path=local stage=biometric_probe uid={uid} available=false");
+            Platform::default()
+        })
+    } else {
+        Platform::default()
+    };
+    let response = dispatch::handle_request(&mut state, tx, request, platform)
         .ok_or("Unsupported local SOTER request")?;
     state.cpu_id = cpu;
     write(&path, &state.to_json())?;
@@ -489,6 +526,124 @@ fn answer_at(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn legacy_config_keeps_framework_probe_off() {
+        let config: Config =
+            serde_json::from_str(r#"{"version":1,"enabled":true,"identities":[],"apps":{}}"#)
+                .unwrap();
+        assert!(!config.framework_biometrics);
+        assert!(serde_json::to_value(config).unwrap().get("framework_biometrics").is_none());
+    }
+
+    #[test]
+    fn framework_signing_requires_opt_in_and_fresh_evidence() {
+        let root = tempfile::tempdir().unwrap();
+        fs::set_permissions(root.path(), fs::Permissions::from_mode(0o700)).unwrap();
+        let config = change_at(root.path(), Change::Add { name: "Lab".into() }).unwrap();
+        change_at(
+            root.path(),
+            Change::App {
+                target: "com.tencent.mm@0".into(),
+                identity: Some(config.identities[0].id.clone()),
+                cpu_id: String::new(),
+            },
+        )
+        .unwrap();
+        change_at(root.path(), Change::Enabled { enabled: true }).unwrap();
+        let packages = "com.tencent.mm 10123 0 /data/user/0/com.tencent.mm default:targetSdkVersion=37 none 0 0 0";
+        let uid = 10123;
+        for (tx, request) in [
+            (dispatch::TX_GENERATE_ASK, Request::Uid(uid)),
+            (dispatch::TX_GENERATE_AUTH, Request::UidKey { uid, kname: "pay".into() }),
+        ] {
+            assert!(matches!(
+                answer_at(root.path(), uid, tx, request, packages).unwrap(),
+                Outcome::Code(0)
+            ));
+        }
+        let mark =
+            |counter| Platform { boot_ms: Some(1000), bio_mark: Some((7u64 << 32) | counter) };
+        let init =
+            || Request::InitSign { uid, kname: "pay".into(), challenge: "server-challenge".into() };
+        // An old configuration does not begin using the framework adapter.
+        let answer = answer_with_probe_at(
+            root.path(),
+            uid,
+            dispatch::TX_INIT_SIGN,
+            init(),
+            packages,
+            |_| panic!("probe must stay off"),
+        )
+        .unwrap();
+        let Outcome::Init { code: 0, session } = answer else { panic!("init") };
+        let answer = answer_with_probe_at(
+            root.path(),
+            uid,
+            dispatch::TX_FINISH_SIGN,
+            Request::Session(session),
+            packages,
+            |_| panic!("probe must stay off"),
+        )
+        .unwrap();
+        assert!(matches!(answer, Outcome::Buffer { code: -26, .. }));
+
+        change_at(root.path(), Change::FrameworkBiometrics { enabled: true }).unwrap();
+        let init_session = |platform| {
+            let answer = answer_with_probe_at(
+                root.path(),
+                uid,
+                dispatch::TX_INIT_SIGN,
+                init(),
+                packages,
+                |_| platform,
+            )
+            .unwrap();
+            let Outcome::Init { code: 0, session } = answer else { panic!("init") };
+            session
+        };
+        let finish = |session, platform| {
+            answer_with_probe_at(
+                root.path(),
+                uid,
+                dispatch::TX_FINISH_SIGN,
+                Request::Session(session),
+                packages,
+                |_| platform,
+            )
+            .unwrap()
+        };
+        let missing = init_session(None);
+        assert!(matches!(finish(missing, Some(mark(11))), Outcome::Buffer { code: -26, .. }));
+        let session = init_session(Some(mark(10)));
+        assert!(matches!(finish(session, None), Outcome::Buffer { code: -26, .. }));
+        assert!(matches!(finish(session, Some(mark(10))), Outcome::Buffer { code: -26, .. }));
+        let mut rebooted = mark(11);
+        rebooted.bio_mark = Some((8u64 << 32) | 11);
+        assert!(matches!(finish(session, Some(rebooted)), Outcome::Buffer { code: -26, .. }));
+        let mut expired = mark(11);
+        expired.boot_ms = Some(1000 + crate::state::BIO_WINDOW_MS + 1);
+        assert!(matches!(finish(session, Some(expired)), Outcome::Buffer { code: -26, .. }));
+        assert!(
+            matches!(finish(session, Some(mark(11))), Outcome::Buffer { code: 0, data, .. } if !data.is_empty())
+        );
+        // A successful session cannot sign twice.
+        assert!(matches!(finish(session, Some(mark(12))), Outcome::Buffer { code: -1000, .. }));
+        // Opening another session cannot spend an already consumed match.
+        let session = init_session(Some(mark(10)));
+        assert!(matches!(finish(session, Some(mark(11))), Outcome::Buffer { code: -26, .. }));
+        change_at(root.path(), Change::FrameworkBiometrics { enabled: false }).unwrap();
+        let answer = answer_with_probe_at(
+            root.path(),
+            uid,
+            dispatch::TX_FINISH_SIGN,
+            Request::Session(session),
+            packages,
+            |_| panic!("disabled probe"),
+        )
+        .unwrap();
+        assert!(matches!(answer, Outcome::Buffer { code: -26, .. }));
+    }
 
     #[test]
     fn fresh_install_has_no_default_identity_or_files() {

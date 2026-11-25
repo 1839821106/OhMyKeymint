@@ -56,6 +56,7 @@ export type KeyboxLevel = 'tee' | 'strongbox' | 'unknown'
 export interface SoterIdentityState {
   version: number
   enabled: boolean
+  framework_biometrics: boolean
   identities: { id: string, name: string, cpu_id: string }[]
   apps: Record<string, { identity: string, cpu_id: string }>
 }
@@ -493,6 +494,7 @@ export class Cli {
   }
 
   async changeSoterLocal(change: { action: 'enabled', enabled: boolean }
+    | { action: 'framework_biometrics', enabled: boolean }
     | { action: 'remove', id: string }
     | { action: 'add', name: string }
     | { action: 'apps', targets: string[], identity: string }
@@ -507,6 +509,7 @@ export class Cli {
   #parseSoterLocal(output: string): SoterIdentityState {
     const state = parseCanonicalJson(output, 'local SOTER')
     if (!isRecord(state) || state.version !== 1 || typeof state.enabled !== 'boolean'
+        || (state.framework_biometrics !== undefined && typeof state.framework_biometrics !== 'boolean')
         || !Array.isArray(state.identities) || state.identities.length > 32 || !isRecord(state.apps)
         || !state.identities.every(item => isRecord(item) && typeof item.id === 'string'
           && /^[a-f0-9]{32}$/.test(item.id) && typeof item.name === 'string'
@@ -516,7 +519,7 @@ export class Cli {
           return target?.kind === 'package-user' && isRecord(app)
             && typeof app.identity === 'string' && typeof app.cpu_id === 'string'
         })) throw new Error('Invalid local SOTER identity response')
-    return state as unknown as SoterIdentityState
+    return { ...state, framework_biometrics: state.framework_biometrics ?? false } as unknown as SoterIdentityState
   }
   #helperPaths: Promise<HelperPaths> | null = null
 

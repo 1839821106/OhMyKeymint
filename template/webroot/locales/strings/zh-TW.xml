@@ -224,7 +224,7 @@
     <string name="soter_local_delete_confirm">確定刪除</string>
     <string name="soter_local_delete_warning">將永久刪除此身分的金鑰及簽章工作階段，關聯 APP 恢復原廠 SOTER。其他身分與 Keybox 不受影響，刪除後無法恢復。</string>
     <string name="soter_local_tool_desc">新增本機隨機身分，依 APP 設定 CPU-ID。</string>
-    <string name="soter_local_desc">本機隨機簽章憑證和 CPU-ID，可用於檢測器測試，不支援指紋支付驗證。</string>
+    <string name="soter_local_desc">用於相容性測試的本地軟體 SOTER 身份。不保證支付認證通過，也不等同於原廠硬體認證。</string>
     <string name="soter_local_enabled">啟用 SOTER</string>
     <string name="soter_local_enabled_desc">僅作用於個別分配身分的 APP，關閉後恢復原廠 SOTER 路徑。</string>
     <string name="soter_local_random">本機隨機身分</string>
@@ -235,4 +235,6 @@
     <string name="soter_cpu_invalid">CPU-ID 必須為 32 或 36 位十六進位字元。</string>
     <string name="soter_local_empty">請先在工具 → SOTER 本機身分中新增隨機身分。</string>
     <string name="soter_local_inactive">SOTER 總開關未啟用，請在工具中開啟後生效。</string>
+    <string name="soter_framework_enabled">實驗性指紋計數適配</string>
+    <string name="soter_framework_warning">使用系統指紋成功計數，無法證明本次支付已通過指紋認證；同一使用者的其他指紋驗證可能計入。讀取失敗時拒絕簽名，尚未驗證支付相容性。</string>
 </resources>

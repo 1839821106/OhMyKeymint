@@ -35,7 +35,7 @@ async function load(): Promise<void> {
   try {
     await afterPaint()
     const value: SoterIdentityState = isDev()
-      ? { version: 1, enabled: false, identities: [], apps: {} }
+      ? { version: 1, enabled: false, framework_biometrics: false, identities: [], apps: {} }
       : await props.cli.getSoterLocal()
     if (current !== generation || !props.modelValue) return
     state.value = value
@@ -143,6 +143,9 @@ defineExpose({ busy, requestClose })
             <MiuixSwitchPreference :model-value="state.enabled" :disabled="busy || isDev()"
               :title="i18n.t('soter_local_enabled')" :summary="i18n.t('soter_local_enabled_desc')"
               @update:model-value="enabled => change({ action: 'enabled', enabled })" />
+            <MiuixSwitchPreference :model-value="state.framework_biometrics" :disabled="busy || isDev()"
+              :title="i18n.t('soter_framework_enabled')" :summary="i18n.t('soter_framework_warning')"
+              @update:model-value="enabled => change({ action: 'framework_biometrics', enabled })" />
           </MiuixCard>
           <MiuixCard v-for="identity in state.identities" :key="identity.id" press-feedback="none">
             <div class="soter-identity">

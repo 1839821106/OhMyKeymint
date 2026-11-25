@@ -1576,9 +1576,27 @@ The master switch defaults off. Turning it off retains local identities and app
 assignments, while newly observed requests use the original SOTER path.
 Configuration errors do not select another identity. Local keys are software
 keys, and CPU-ID is a SOTER protocol field, not a physical CPU modification.
-Factory ATTK provisioning operations remain native. The current local broker
-does not supply verifiable biometric evidence, so finishSign returns -26. This
-identity implementation cannot currently complete fingerprint-payment signing.
+Factory ATTK provisioning operations remain native. By default the local broker does not supply biometric evidence, so finishSign
+returns -26. The experimental `framework_biometrics` boolean in
+`data/soter/identities.json` defaults to false, including when reading older
+configurations. The Local SOTER identities WebUI exposes this separate switch.
+It does not enable SOTER or assign an identity automatically.
+
+When explicitly enabled, the root broker samples FingerprintService JSON counters
+for the caller's Android user at initSign and finishSign. Queries have a 1.5-second
+deadline and a 512-KiB output limit. Missing/unsupported output, counter overflow,
+no new match, a different boot, expired sessions and reused marks refuse signing.
+No remote relay or factory-key provisioning is used. Disable this switch to stop
+sampling and refuse local fingerprint signatures again; disable the SOTER master
+switch to restore stock routing for newly observed requests.
+
+These are framework statistics, not cryptographically verified authentication
+tokens. They do not bind a fingerprint to the caller, a key, or a payment
+challenge. Another fingerprint success in the same Android user can satisfy the
+counter check; replay tracking is per local identity. This is a compatibility
+experiment, not equivalent to hardware-backed payment authentication. Tencent's
+server acceptance and OnePlus 13T Android 17 compatibility are unverified.
+Factory SOTER key-state displays may still report failure.
 
 The native root supervisor injects only the exact ARM64
 com.tencent.soter.soterserver process and intercepts supported vendor HAL

@@ -304,7 +304,7 @@
     <string name="soter_local_delete_confirm">Confirm deletion</string>
     <string name="soter_local_delete_warning">Permanently delete this identity's keys and signing sessions. Assigned apps return to stock SOTER. Other identities and Keybox are unchanged. This cannot be undone.</string>
     <string name="soter_local_tool_desc">Create random local identities and configure per-app CPU-ID.</string>
-    <string name="soter_local_desc">Local random signing certificates and CPU-ID for detector testing. Fingerprint-payment authentication is not supported.</string>
+    <string name="soter_local_desc">Local software SOTER identities for compatibility testing. Payment acceptance and hardware-equivalent authentication are not guaranteed.</string>
     <string name="soter_local_enabled">Enable SOTER</string>
     <string name="soter_local_enabled_desc">Applies only to apps with an assigned identity. Turning off restores their original SOTER path.</string>
     <string name="soter_local_random">Local random identity</string>
@@ -315,4 +315,6 @@
     <string name="soter_cpu_invalid">CPU-ID must be 32 or 36 hexadecimal characters.</string>
     <string name="soter_local_empty">Add a local identity from Tools > Local SOTER identities first.</string>
     <string name="soter_local_inactive">SOTER is disabled. Enable it in Tools for this assignment to take effect.</string>
+    <string name="soter_framework_enabled">Experimental fingerprint counter adapter</string>
+    <string name="soter_framework_warning">Uses framework success counters, not TEE-verified payment evidence. Other fingerprint matches in the same Android user may qualify. Missing data refuses signing; payment acceptance is unverified.</string>
 </resources>

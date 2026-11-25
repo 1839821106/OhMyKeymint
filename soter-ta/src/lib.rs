@@ -3,6 +3,7 @@ pub mod blob;
 pub mod bridge;
 pub mod dispatch;
 pub mod error;
+pub mod framework_biometrics;
 pub mod hal;
 pub mod identities;
 pub mod parcel;

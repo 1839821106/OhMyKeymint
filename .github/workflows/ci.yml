@@ -4,7 +4,7 @@ on:
   push:
     tags:
       - '*'
-    branches: [ "master" ]
+    branches: [ "master", "soterlab/**" ]
     paths-ignore:
       - '**.md'
       - '**.txt'
@@ -143,6 +143,9 @@ jobs:
     - name: Check Clippy
       run: cargo clippy --target aarch64-linux-android --workspace --all-targets -- -D warnings
 
+    - name: Compile Android workspace tests
+      run: cargo test --target aarch64-linux-android --workspace --no-run
+
     - name: Check dependencies
       run: cargo deny --workspace check
 
@@ -150,6 +153,7 @@ jobs:
     runs-on: ubuntu-latest
     needs:
       - build-boringssl
+      - lint
     permissions:
       id-token: write
       attestations: write

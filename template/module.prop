@@ -1,7 +1,6 @@
 id=oh_my_keymint
-name=Oh My Keymint
+name=Local Soter Lab
 version=${versionName}
 versionCode=${versionCode}
 author=James Clef,ITxiao6666
-description=Custom keystore implementation for Android Keystore Spoofer
-updateJson=https://raw.githubusercontent.com/ITxiao6666/OhMyKeymint/changelog/update.json
+description=Experimental local Soter counter adapter based on ITxiao6666 OMK 1.4.6-271. Payment compatibility unverified.

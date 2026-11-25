@@ -1,3 +1,17 @@
+# Local Soter Lab（实验性修改版）
+
+基于 ITxiao6666/OhMyKeymint 1.4.6-271（0c66114）的本地实验分支，
+不代表原作者发布或认可。新增 OMK-LOCAL 风格的指纹成功计数适配，
+通过现有按应用 Soter 接入工作；未移植缺少证据时直接放行的逻辑。
+
+默认关闭，可在“工具 → 本地 SOTER 身份”单独开启。此实现使用系统统计，
+不提供 TEE 认证或支付请求绑定，未确认能通过微信服务器认证。
+详见 [实验测试说明](SOTER-LAB-TESTING.md) 和配置文档。
+
+保留原项目的许可证、作者署名及下列说明。
+
+---
+
 # Oh My Keymint（第三方版本）
 
 > 本仓库是基于 [qwq233/OhMyKeymint](https://github.com/qwq233/OhMyKeymint) 修改的第三方版本，**不是官方版本，也不代表上游维护者**。本版本的问题请反馈至[本仓库](https://github.com/ITxiao6666/OhMyKeymint/issues)。
