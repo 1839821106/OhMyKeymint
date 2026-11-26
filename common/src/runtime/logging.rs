@@ -27,10 +27,8 @@ use std::{eprintln, format, vec::Vec};
 
 use anyhow::{anyhow, Context as _};
 use log::{Level, LevelFilter, Log, Metadata as LogMetadata, Record};
-use log4rs::append::console::ConsoleAppender;
 use log4rs::append::Append;
 use log4rs::config::{Appender, Config, Root};
-use log4rs::encode::pattern::PatternEncoder;
 use log4rs::encode::{writer::simple::SimpleWriter, Encode};
 
 pub const DEFAULT_MAX_LOG_SIZE_BYTES: u64 = 4 * 1024 * 1024;
@@ -392,9 +390,58 @@ impl Drop for FileLockGuard {
     }
 }
 
+// Keep timestamp formatting independent of log4rs' chrono-based pattern encoder.
+#[derive(Debug)]
+struct UtcLogEncoder;
+
+impl UtcLogEncoder {
+    fn encode_at(
+        &self,
+        writer: &mut dyn log4rs::encode::Write,
+        record: &Record<'_>,
+        now: jiff::Timestamp,
+    ) -> anyhow::Result<()> {
+        writeln!(
+            writer,
+            "{} [{}] {} - {}",
+            now.strftime("%Y-%m-%d %H:%M:%S %Z"),
+            record.level(),
+            record.module_path().unwrap_or("???"),
+            record.args(),
+        )?;
+        Ok(())
+    }
+}
+
+impl Encode for UtcLogEncoder {
+    fn encode(
+        &self,
+        writer: &mut dyn log4rs::encode::Write,
+        record: &Record<'_>,
+    ) -> anyhow::Result<()> {
+        self.encode_at(writer, record, jiff::Timestamp::now())
+    }
+}
+
+#[derive(Debug)]
+struct StdoutAppender;
+
+impl Append for StdoutAppender {
+    fn append(&self, record: &Record<'_>) -> anyhow::Result<()> {
+        let stdout = io::stdout();
+        let mut lock = stdout.lock();
+        UtcLogEncoder.encode(&mut SimpleWriter(&mut lock), record)?;
+        lock.flush()?;
+        Ok(())
+    }
+
+    fn flush(&self) {
+        let _ = io::stdout().flush();
+    }
+}
+
 pub fn build_console_file_config<P: AsRef<Path>>(
     file_path: P,
-    pattern: &str,
     level: LevelFilter,
     error_prefix: &str,
 ) -> anyhow::Result<(Config, bool)> {
@@ -404,8 +451,7 @@ pub fn build_console_file_config<P: AsRef<Path>>(
         .map(|target| target != Path::new("/dev/null"))
         .unwrap_or(true)
     {
-        let stdout =
-            ConsoleAppender::builder().encoder(Box::new(PatternEncoder::new(pattern))).build();
+        let stdout = StdoutAppender;
         builder = builder.appender(Appender::builder().build("stdout", Box::new(stdout)));
         root = root.appender("stdout");
     }
@@ -421,23 +467,17 @@ pub fn build_console_file_config<P: AsRef<Path>>(
         ),
     }
 
-    let file_logging_ready =
-        match LockedRotatingFileAppender::new(path, Box::new(PatternEncoder::new(pattern))) {
-            Ok(file) => {
-                builder = builder.appender(Appender::builder().build("file", Box::new(file)));
-                root = root.appender("file");
-                true
-            }
-            Err(error) => {
-                eprintln!(
-                    "{} file logging disabled for {}: {}",
-                    error_prefix,
-                    path.display(),
-                    error
-                );
-                false
-            }
-        };
+    let file_logging_ready = match LockedRotatingFileAppender::new(path, Box::new(UtcLogEncoder)) {
+        Ok(file) => {
+            builder = builder.appender(Appender::builder().build("file", Box::new(file)));
+            root = root.appender("file");
+            true
+        }
+        Err(error) => {
+            eprintln!("{} file logging disabled for {}: {}", error_prefix, path.display(), error);
+            false
+        }
+    };
 
     Ok((builder.build(root.build(level))?, file_logging_ready))
 }
@@ -448,6 +488,42 @@ mod tests {
     use log::Level;
     use std::sync::Arc;
     use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[derive(Debug)]
+    struct MessageEncoder;
+
+    impl Encode for MessageEncoder {
+        fn encode(
+            &self,
+            writer: &mut dyn log4rs::encode::Write,
+            record: &Record<'_>,
+        ) -> anyhow::Result<()> {
+            writeln!(writer, "{}", record.args())?;
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn utc_log_encoder_preserves_record_fields() {
+        let args = format_args!("payment status: {}", 26);
+        let record = Record::builder()
+            .args(args)
+            .level(Level::Warn)
+            .module_path(Some("soter::sign"))
+            .build();
+        let mut bytes = Vec::new();
+        UtcLogEncoder
+            .encode_at(
+                &mut SimpleWriter(&mut bytes),
+                &record,
+                "2026-11-26T00:01:02.345Z".parse().unwrap(),
+            )
+            .unwrap();
+        assert_eq!(
+            String::from_utf8(bytes).unwrap(),
+            "2026-11-26 00:01:02 UTC [WARN] soter::sign - payment status: 26\n"
+        );
+    }
 
     #[derive(Clone, Default)]
     struct CapturedLogger {
@@ -611,9 +687,7 @@ mod tests {
         let lock_path = suffixed_path(&path, ".lock");
         fs::write(&lock_path, b"legacy").unwrap();
 
-        let appender =
-            LockedRotatingFileAppender::new(&path, Box::new(PatternEncoder::new("{m}{n}")))
-                .unwrap();
+        let appender = LockedRotatingFileAppender::new(&path, Box::new(MessageEncoder)).unwrap();
         append_message(&appender, "hello");
 
         assert_eq!(log_lines(&path), ["hello"]);
@@ -625,12 +699,8 @@ mod tests {
     fn appender_rotates_without_sidecar_lock_file() {
         let path = temp_log_path("runtime.log");
         let parent = path.parent().unwrap();
-        let appender = LockedRotatingFileAppender::with_max_size(
-            &path,
-            Box::new(PatternEncoder::new("{m}{n}")),
-            8,
-        )
-        .unwrap();
+        let appender =
+            LockedRotatingFileAppender::with_max_size(&path, Box::new(MessageEncoder), 8).unwrap();
 
         append_message(&appender, "abc");
         append_message(&appender, "defghijkl");
@@ -645,18 +715,10 @@ mod tests {
     fn appender_reopens_after_another_appender_rotates() {
         let path = temp_log_path("runtime.log");
         let parent = path.parent().unwrap();
-        let first = LockedRotatingFileAppender::with_max_size(
-            &path,
-            Box::new(PatternEncoder::new("{m}{n}")),
-            8,
-        )
-        .unwrap();
-        let second = LockedRotatingFileAppender::with_max_size(
-            &path,
-            Box::new(PatternEncoder::new("{m}{n}")),
-            8,
-        )
-        .unwrap();
+        let first =
+            LockedRotatingFileAppender::with_max_size(&path, Box::new(MessageEncoder), 8).unwrap();
+        let second =
+            LockedRotatingFileAppender::with_max_size(&path, Box::new(MessageEncoder), 8).unwrap();
 
         append_message(&first, "abc");
         append_message(&second, "defgh");

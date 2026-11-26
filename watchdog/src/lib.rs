@@ -68,8 +68,14 @@ impl Record {
     // the watchdog started), but it's _really_ useful to get a starting wall time for overrunning
     // watchdogs.
     fn started_utc(&self) -> String {
-        let started_utc = chrono::Utc::now() - self.started.elapsed();
-        format!("{}", started_utc.format("%m-%d %H:%M:%S%.3f UTC"))
+        format_started_utc(jiff::Timestamp::now(), self.started.elapsed())
+    }
+}
+
+fn format_started_utc(now: jiff::Timestamp, elapsed: Duration) -> String {
+    match now.checked_sub(elapsed) {
+        Ok(started) => started.strftime("%m-%d %H:%M:%S%.3f UTC").to_string(),
+        Err(_) => "unavailable UTC".to_owned(),
     }
 }
 
@@ -374,5 +380,24 @@ impl Watchdog {
             log::info!("Watchdog thread idle -> terminating. Have a great day.");
         }));
         state.state = State::Running;
+    }
+}
+
+#[cfg(test)]
+mod timestamp_tests {
+    use super::*;
+
+    #[test]
+    fn start_time_preserves_utc_milliseconds_across_midnight() {
+        let now = "2026-11-26T00:00:00.123456Z".parse().unwrap();
+        assert_eq!(format_started_utc(now, Duration::from_secs(1)), "11-25 23:59:59.123 UTC");
+    }
+
+    #[test]
+    fn unrepresentable_start_time_does_not_panic() {
+        assert_eq!(
+            format_started_utc(jiff::Timestamp::MIN, Duration::from_secs(1)),
+            "unavailable UTC"
+        );
     }
 }

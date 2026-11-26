@@ -18,9 +18,10 @@ der = { version = "0.8.2", features = ["alloc", "derive"] }
 enumn = "0.1.14"
 kmr-derive = { path = "../derive", version = "0.1.0" }
 kmr-wire = { path = "../wire", version = "0.1.0" }
+jiff = { version = "1.0.3", default-features = false, features = ["std"] }
 libc = "0.2.190"
 log = "0.4.34"
-log4rs = { version = "1.4.0", default-features = false, features = ["console_appender"] }
+log4rs = { version = "1.4.0", default-features = false, features = ["simple_writer"] }
 pkcs1 = { version = "0.7.5", features = ["alloc"] }
 pkcs8 = "0.11.0"
 quick-xml = { version = "0.42.0", features = ["serialize"] }

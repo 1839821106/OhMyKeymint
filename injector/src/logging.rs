@@ -4,7 +4,6 @@ use anyhow::Result;
 use log::LevelFilter;
 
 const DEFAULT_LOG_PATH: &str = "/data/misc/keystore/omk/logs/injector.log";
-const PATTERN: &str = "{d(%Y-%m-%d %H:%M:%S %Z)(utc)} [{h({l})}] {M} - {m}{n}";
 
 static LOGGER_INIT: OnceLock<()> = OnceLock::new();
 
@@ -19,7 +18,6 @@ pub fn init_logger_fallback(level: LevelFilter) {
 fn init_logger_inner(configured_level: LevelFilter) -> Result<()> {
     let (config, file_logging_ready) = kmr_common::runtime::logging::build_console_file_config(
         DEFAULT_LOG_PATH,
-        PATTERN,
         LevelFilter::Trace,
         "injector logging",
     )?;

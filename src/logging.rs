@@ -4,7 +4,6 @@ use anyhow::Result;
 use log::LevelFilter;
 
 const DEFAULT_LOG_PATH: &str = "/data/misc/keystore/omk/logs/keymint.log";
-const PATTERN: &str = "{d(%Y-%m-%d %H:%M:%S %Z)(utc)} [{h({l})}] {M} - {m}{n}";
 
 static LOGGER_INIT: OnceLock<()> = OnceLock::new();
 
@@ -25,7 +24,6 @@ fn init_logger_inner() -> Result<()> {
 
     let (config, file_logging_ready) = kmr_common::runtime::logging::build_console_file_config(
         DEFAULT_LOG_PATH,
-        PATTERN,
         LevelFilter::Trace,
         "keymint logging",
     )?;
